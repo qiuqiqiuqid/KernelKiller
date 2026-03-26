@@ -196,48 +196,76 @@ class DriverLoader:
         if self._service_started:
             return True
         
+        scm = None
         try:
-            driver_path = self._write_temp_driver()
-            scm = _win32service.OpenSCManager(None, None, _win32service.SC_MANAGER_ALL_ACCESS)
-            
+            # 首先尝试以只读方式打开 SCM
             try:
-                # 检查服务是否存在
-                try:
-                    self._service_handle = _win32service.OpenService(
-                        scm, self._service_name, _win32service.SERVICE_ALL_ACCESS
-                    )
-                    try:
-                        _win32service.StartService(self._service_handle, [])
-                        self._service_started = True
-                        return True
-                    except _win32service.error as e:
-                        if e.winerror == _winerror.ERROR_SERVICE_ALREADY_RUNNING:
-                            self._service_started = True
-                            return True
-                        raise
-                except _win32service.error:
-                    pass
-                
-                # 创建服务
-                self._service_handle = _win32service.CreateService(
-                    scm, self._service_name, SERVICE_DISPLAY_NAME,
-                    _win32service.SERVICE_ALL_ACCESS,
-                    _win32service.SERVICE_KERNEL_DRIVER,
-                    _win32service.SERVICE_DEMAND_START,
-                    _win32service.SERVICE_ERROR_IGNORE,
-                    driver_path, None, False, None, None, None
+                scm = _win32service.OpenSCManager(None, None, _win32service.SC_MANAGER_CONNECT)
+            except _win32service.error:
+                # 如果只读不行，尝试完全访问
+                scm = _win32service.OpenSCManager(None, None, _win32service.SC_MANAGER_ALL_ACCESS)
+            
+            # 尝试打开已有服务
+            try:
+                self._service_handle = _win32service.OpenService(
+                    scm, self._service_name,
+                    _win32service.SERVICE_START | _win32service.SERVICE_STOP | _win32service.SERVICE_QUERY_STATUS
                 )
-                self._service_created = True
                 
-                _win32service.StartService(self._service_handle, [])
-                self._service_started = True
-                return True
-                
-            finally:
+                # 尝试启动服务
+                try:
+                    _win32service.StartService(self._service_handle, [])
+                    self._service_started = True
+                    _win32service.CloseServiceHandle(scm)
+                    scm = None
+                    return True
+                except _win32service.error as e:
+                    if e.winerror == _winerror.ERROR_SERVICE_ALREADY_RUNNING:
+                        self._service_started = True
+                        _win32service.CloseServiceHandle(scm)
+                        scm = None
+                        return True
+                    # 其他错误，继续尝试创建新服务
+                    _win32service.CloseServiceHandle(self._service_handle)
+                    self._service_handle = None
+                    
+            except _win32service.error:
+                # 服务不存在，继续创建
+                pass
+            
+            # 关闭只读 SCM，重新以完全访问打开
+            if scm is not None:
                 _win32service.CloseServiceHandle(scm)
-                
+                scm = None
+            
+            # 创建新服务
+            scm = _win32service.OpenSCManager(None, None, _win32service.SC_MANAGER_ALL_ACCESS)
+            driver_path = self._write_temp_driver()
+            
+            self._service_handle = _win32service.CreateService(
+                scm, self._service_name, SERVICE_DISPLAY_NAME,
+                _win32service.SERVICE_ALL_ACCESS,
+                _win32service.SERVICE_KERNEL_DRIVER,
+                _win32service.SERVICE_DEMAND_START,
+                _win32service.SERVICE_ERROR_IGNORE,
+                driver_path, None, False, None, None, None
+            )
+            self._service_created = True
+            
+            _win32service.StartService(self._service_handle, [])
+            self._service_started = True
+            
+            _win32service.CloseServiceHandle(scm)
+            scm = None
+            return True
+            
         except Exception as e:
             print(f"[!] 驱动加载失败：{e}")
+            if scm is not None:
+                try:
+                    _win32service.CloseServiceHandle(scm)
+                except:
+                    pass
             self._cleanup()
             return False
     
