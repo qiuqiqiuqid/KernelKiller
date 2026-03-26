@@ -24,10 +24,18 @@ import base64
 from pathlib import Path
 from typing import Optional, Any, List, Tuple
 
-# 依赖库导入
+# 依赖库导入 - 延迟加载以避免初始化时检查
 import importlib
+from typing import TYPE_CHECKING
 
-def _import_module(name):
+if TYPE_CHECKING:
+    import win32file
+    import win32service
+    import win32con
+    import winerror
+    import psutil
+
+def _import_module(name: str):
     """延迟导入模块"""
     try:
         return importlib.import_module(name)
@@ -35,11 +43,11 @@ def _import_module(name):
         raise ImportError(f"缺少依赖库 {name}\n请运行：pip install pywin32 psutil")
 
 # 在使用时导入，避免初始化时检查
-_win32file = None
-_win32service = None
-_win32con = None
-_winerror = None
-_psutil = None
+_win32file = None  # type: win32file
+_win32service = None  # type: win32service
+_win32con = None  # type: win32con
+_winerror = None  # type: winerror
+_psutil = None  # type: psutil
 
 # =============================================================================
 # 配置常量
@@ -103,11 +111,11 @@ def _ensure_deps():
     """确保依赖已导入"""
     global _win32file, _win32service, _win32con, _winerror, _psutil
     if _win32file is None:
-        _win32file = _import_module('win32file')
-        _win32service = _import_module('win32service')
-        _win32con = _import_module('win32con')
-        _winerror = _import_module('winerror')
-        _psutil = _import_module('psutil')
+        _win32file = _import_module('win32file')  # type: ignore
+        _win32service = _import_module('win32service')  # type: ignore
+        _win32con = _import_module('win32con')  # type: ignore
+        _winerror = _import_module('winerror')  # type: ignore
+        _psutil = _import_module('psutil')  # type: ignore
 
 class DriverLoader:
     """驱动加载器类"""
@@ -467,7 +475,7 @@ class BYOVD:
         """关闭资源"""
         if self._device_handle is not None:
             try:
-                _win32file.CloseHandle(int(self._device_handle))
+                _win32file.CloseHandle(int(self._device_handle))  # type: ignore
             except:
                 pass
             self._device_handle = None
