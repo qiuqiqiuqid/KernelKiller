@@ -49,9 +49,32 @@ with BYOVD() as byovd:
         print(f"{av}: {name}")
 ```
 
+### 3. 自动提权 + 一键终结杀软
+
+```python
+from byovd_lib import request_elevation, kill_all_av
+
+# 自动请求管理员权限（弹出 UAC 对话框）
+request_elevation()
+
+# 一键识别并终结所有杀毒软件
+results = kill_all_av()
+for pid, name, av, success, msg in results:
+    print(f"[{'+' if success else '-'}] {av} ({name}, PID: {pid}): {msg}")
+```
+
 ---
 
 ## API 接口
+
+### 便捷函数
+
+| 功能 | 方法 | 说明 |
+|------|------|------|
+| 自动提权 | `request_elevation()` | 请求 UAC 管理员权限，自动重启脚本 |
+| 一键终结杀软 | `kill_all_av(verbose=True)` | 自动识别并终结所有杀毒软件进程 |
+
+### BYOVD 类方法
 
 | 功能 | 方法 | 示例 |
 |------|------|------|
@@ -139,9 +162,10 @@ python build.py --list
 
 ## 注意事项
 
-1. **管理员权限**: 必须以管理员权限运行
+1. **管理员权限**: 必须以管理员权限运行，可使用 `request_elevation()` 自动请求
 2. **驱动文件**: 确保 `BdApiUtil64.sys` 存在于库目录或当前目录
 3. **资源清理**: 使用 `with` 语句或手动调用 `close()`
+4. **杀软终结**: `kill_all_av()` 会终止所有检测到的杀毒软件进程
 
 ---
 
